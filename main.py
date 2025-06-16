@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import List, Optional
 from dataclasses import dataclass
+from argparse import ArgumentParser
 
 class TokenKind(Enum):
     PLUS = 0 # +
@@ -160,10 +161,23 @@ class Lexer:
 
 
 def main() -> None:
-    with open("examples/simple.calc", 'r') as file:
-        contents = file.read()
+    argument_parser = ArgumentParser(
+        prog="simd-calc",
+        description="ASM transpiler for a simple calculator."
+    )
 
-        lexer = Lexer(contents)
+    # TODO: CPU features flags (e.g.: -msse2, -mavx512)
+    argument_parser.add_argument("filename")
+    argument_parser.add_argument(
+        "-O",
+        dest="optimization_level",
+        choices=["0", "1", "2", "3"],
+        help="Optimization level (O0-O3)")
+
+    args = argument_parser.parse_args()
+
+    with open(args.filename, 'r') as file:
+        lexer = Lexer(file.read())
         for token in lexer.tokenize():
             print(token)
 
