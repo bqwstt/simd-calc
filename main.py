@@ -89,7 +89,7 @@ class Lexer:
         identifier = start
         next_char = self.peek()
         while next_char is not None and (next_char.isalnum() or next_char == '_'):
-            # identifier += next_char
+            identifier += next_char
             _ = self.advance()
             next_char = self.peek()
 
@@ -102,7 +102,6 @@ class Lexer:
     def consume_number(self) -> None:
         next_char = self.peek()
         while next_char is not None and (next_char.isdigit() or next_char == '.'):
-            # number += next_digit
             _ = self.advance()
             next_char = self.peek()
 
@@ -156,9 +155,7 @@ class Lexer:
                         raise SyntaxError(
                             f"Invalid character '{current_char}' at {self.line}:{self.column}.")
             
-
         return self.tokens
-
 
 def main() -> None:
     argument_parser = ArgumentParser(
@@ -180,7 +177,6 @@ def main() -> None:
         lexer = Lexer(file.read())
         for token in lexer.tokenize():
             print(token)
-
 
 if __name__ == "__main__":
     main()
