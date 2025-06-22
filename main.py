@@ -196,7 +196,10 @@ class ASTNode:
     def dump_ast(self, depth: int = 1) -> str:
         return ""
 
-class ASTIdentifier(ASTNode):
+class ASTExpression(ASTNode):
+    pass
+
+class ASTIdentifier(ASTExpression):
     __slots__ = ["name"]
 
     name: str
@@ -207,8 +210,19 @@ class ASTIdentifier(ASTNode):
     def dump_ast(self, depth: int = 1) -> str:
         return f"ASTIdentifier('{self.name}')"
 
-class ASTExpression(ASTNode):
-    ...
+class ASTStatement(ASTNode):
+    pass
+
+class ASTProgram(ASTNode):
+    __slots__ = ["nodes"]
+
+    nodes: List[ASTStatement]
+
+    def __init__(self):
+        self.nodes = []
+
+    def dump_ast(self, depth: int = 1) -> str:
+        return f"ASTProgram({", ".join(node.dump_ast(depth+1) for node in self.nodes)})"
 
 class ASTNumber(ASTExpression):
     __slots__ = ["literal"]
@@ -222,7 +236,7 @@ class ASTNumber(ASTExpression):
         indent = "\t" * depth
         return f"ASTNumber({self.literal})"
 
-class ASTVariableDeclaration(ASTNode):
+class ASTVariableDeclaration(ASTStatement):
     __slots__ = [
         "identifier",
         "expression"
@@ -283,12 +297,19 @@ class Parser:
         return self.tokens[self.current] if self.current < len(self.tokens) else None
 
     def parse(self) -> ASTNode:
-        # TODO: start from program node, go downwards declarations
-        program = self.declaration()
+        program = ASTProgram()
+        while (statement := self.statement()) is not None:
+            program.nodes.append(statement)
+
         return program
 
     def expression(self, precedence_limit: int = 0) -> ASTExpression:
-        expression = ASTNumber(self.advance().literal)
+        token = self.advance()
+        if token.kind == TokenKind.IDENTIFIER:
+            expression = ASTIdentifier(token.literal)
+        elif token.kind == TokenKind.NUMBER:
+            expression = ASTNumber(token.literal)
+
         next_token = self.peek()
 
         while next_token is not None and next_token.kind.is_operator():
@@ -316,6 +337,14 @@ class Parser:
         expression = self.expression()
         _ = self.advance() # Semicolon, TODO: error handling
         return ASTVariableDeclaration(identifier, expression)
+
+    def statement(self) -> Optional[ASTStatement]:
+        statement = None
+
+        if (token := self.peek()) is not None and token.kind == TokenKind.IDENTIFIER:
+            statement = self.declaration()
+
+        return statement
 
 
 def main() -> None:
