@@ -3,6 +3,11 @@ from typing import List, Optional
 from dataclasses import dataclass
 from argparse import ArgumentParser
 
+class OperatorAssociativityKind(Enum):
+    RIGHT = 0
+    LEFT = 1
+    UNKNOWN = 2
+
 class TokenKind(Enum):
     PLUS = 0 # +
     MINUS = 1 # -
@@ -30,6 +35,29 @@ class TokenKind(Enum):
 
     IDENTIFIER = 20
     NUMBER = 21
+
+    def is_operator(self) -> bool:
+        return self.value <= TokenKind.EXPONENT.value
+
+    def operator_precedence(self) -> int:
+        match self:
+            case TokenKind.PLUS | TokenKind.MINUS:
+                return 1
+            case TokenKind.MULTIPLY | TokenKind.DIVIDE:
+                return 2
+            case TokenKind.EXPONENT:
+                return 3
+            case _:
+                return 0
+    
+    def operator_associativity(self) -> OperatorAssociativityKind:
+        match self:
+            case TokenKind.PLUS | TokenKind.MINUS | TokenKind.MULTIPLY | TokenKind.DIVIDE:
+                return OperatorAssociativityKind.LEFT
+            case TokenKind.EXPONENT:
+                return OperatorAssociativityKind.RIGHT
+            case _:
+                return OperatorAssociativityKind.UNKNOWN
 
 @dataclass(slots=True)
 class Token:
@@ -157,6 +185,139 @@ class Lexer:
             
         return self.tokens
 
+class BinaryExpressionKind(Enum):
+    PLUS = 0
+    MINUS = 1
+    MULTIPLY = 2
+    DIVIDE = 3
+    EXPONENT = 4
+
+class ASTNode:
+    def dump_ast(self, depth: int = 1) -> str:
+        return ""
+
+class ASTIdentifier(ASTNode):
+    __slots__ = ["name"]
+
+    name: str
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def dump_ast(self, depth: int = 1) -> str:
+        return f"ASTIdentifier('{self.name}')"
+
+class ASTExpression(ASTNode):
+    ...
+
+class ASTNumber(ASTExpression):
+    __slots__ = ["literal"]
+
+    literal: str
+
+    def __init__(self, literal: str):
+        self.literal = literal
+
+    def dump_ast(self, depth: int = 1) -> str:
+        indent = "\t" * depth
+        return f"ASTNumber({self.literal})"
+
+class ASTVariableDeclaration(ASTNode):
+    __slots__ = [
+        "identifier",
+        "expression"
+    ]
+
+    identifier: ASTIdentifier
+    expression: ASTExpression
+
+    def __init__(self, identifier: ASTIdentifier, expression: ASTExpression):
+        self.identifier = identifier
+        self.expression = expression
+    
+    def dump_ast(self, depth: int = 1) -> str:
+        identifier = self.identifier.dump_ast(depth + 1)
+        expression = self.expression.dump_ast(depth + 1)
+        return f"ASTVariableDeclaration({identifier}, {expression})"
+
+class ASTBinaryExpression(ASTExpression):
+    __slots__ = [
+        "operation",
+        "left",
+        "right"
+    ]
+
+    operation: BinaryExpressionKind
+    left: ASTExpression
+    right: ASTExpression
+
+    def __init__(self, operation: BinaryExpressionKind, left: ASTExpression, right: ASTExpression):
+        self.operation = operation
+        self.left = left
+        self.right = right
+
+    def dump_ast(self, depth: int = 1) -> str:
+        left = self.left.dump_ast(depth + 1)
+        right = self.right.dump_ast(depth + 1)
+        return f"ASTBinaryExpression('{self.operation}', {left}, {right})"
+
+class Parser:
+    __slots__ = [
+        "tokens",
+        "current"
+    ]
+
+    tokens: List[Token]
+    current: int
+
+    def __init__(self, tokens: List[Token]):
+        self.tokens = tokens
+        self.current = 0
+
+    def advance(self) -> Token:
+        token = self.tokens[self.current]
+        self.current += 1
+        return token
+
+    def peek(self) -> Optional[Token]:
+        return self.tokens[self.current] if self.current < len(self.tokens) else None
+
+    def parse(self) -> ASTNode:
+        # TODO: start from program node, go downwards declarations
+        program = self.declaration()
+        return program
+
+    def expression(self, precedence_limit: int = 0) -> ASTExpression:
+        expression = ASTNumber(self.advance().literal)
+        next_token = self.peek()
+
+        while next_token is not None and next_token.kind.is_operator():
+            precedence = next_token.kind.operator_precedence()
+            final_precedence = precedence
+
+            if next_token.kind.operator_associativity() == OperatorAssociativityKind.RIGHT:
+                final_precedence -= 1
+
+            if precedence <= precedence_limit:
+                return expression
+
+            # Consume the operator
+            operator = BinaryExpressionKind(self.advance().kind.value)
+
+            right = self.expression(final_precedence)
+            expression = ASTBinaryExpression(operator, expression, right)
+            next_token = self.peek()
+
+        return expression
+
+    def declaration(self) -> ASTVariableDeclaration:
+        identifier = ASTIdentifier(self.advance().literal)
+        _ = self.advance() # Assignment token, TODO: error handling
+        expression = self.expression()
+        _ = self.advance() # Semicolon, TODO: error handling
+        return ASTVariableDeclaration(identifier, expression)
+
+
 def main() -> None:
     argument_parser = ArgumentParser(
         prog="simd-calc",
@@ -175,8 +336,13 @@ def main() -> None:
 
     with open(args.filename, 'r') as file:
         lexer = Lexer(file.read())
-        for token in lexer.tokenize():
+        tokens = lexer.tokenize()
+        for token in tokens:
             print(token)
+
+        parser = Parser(tokens)
+        ast = parser.parse()
+        print(ast.dump_ast())
 
 if __name__ == "__main__":
     main()
