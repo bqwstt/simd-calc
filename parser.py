@@ -10,14 +10,8 @@ class BinaryExpressionKind(Enum):
     DIVIDE = 3
     EXPONENT = 4
 
-class ASTNode: pass
-class ASTExpression: pass
-class ASTIdentifier: pass
+# Forward declare, just such that we please the type checker :)
 class ASTStatement: pass
-class ASTProgram: pass
-class ASTNumber: pass
-class ASTVariableDeclaration: pass
-class ASTBinaryExpression: pass
 
 class ASTNode:
     def dump_ast(self, depth: int = 1) -> str:
@@ -104,6 +98,25 @@ class ASTVariableDeclaration(ASTStatement):
         expression = self.expression.dump_ast(depth + 1)
         return f"ASTVariableDeclaration({identifier}, {expression})"
 
+class ASTFunctionCall(ASTExpression, ASTStatement):
+    __slots__ = [
+        "function",
+        "parameters"
+    ]
+
+    function: ASTIdentifier
+    parameters: List[ASTExpression]
+
+    def __init__(self, function: ASTIdentifier, parameters: List[ASTExpression]):
+        self.function = function
+        self.parameters = parameters
+
+    def dump_ast(self, depth: int = 1) -> str:
+        # This assumes the function has parameters, which may not always be true.
+        function = self.function.dump_ast(depth + 1)
+        parameters = ", ".join(param.dump_ast(depth + 2) for param in self.parameters)
+        return f"ASTFunctionCall({function}, {parameters})"
+
 class Parser:
     __slots__ = [
         "tokens",
@@ -122,8 +135,10 @@ class Parser:
         self.current += 1
         return token
 
-    def peek(self) -> Optional[Token]:
-        return self.tokens[self.current] if self.current < len(self.tokens) else None
+    def peek(self, lookahead: int = 0) -> Optional[Token]:
+        return (self.tokens[self.current + lookahead]
+            if self.current + lookahead < len(self.tokens)
+            else None)
 
     def parse(self) -> ASTNode:
         program = ASTProgram()
@@ -133,12 +148,17 @@ class Parser:
         return program
 
     def expression(self, precedence_limit: int = 0) -> ASTExpression:
-        token = self.advance()
+        token = self.peek()
         if token.kind == TokenKind.IDENTIFIER:
+            # <Identifier> + <'('> = function call expression
+            if self.peek(lookahead=1).kind == TokenKind.PAREN_OPEN:
+                return self.function_call()
+
             expression = ASTIdentifier(token.literal)
         elif token.kind == TokenKind.NUMBER:
             expression = ASTNumber(token.literal)
 
+        _ = self.advance()
         next_token = self.peek()
 
         while next_token is not None and next_token.kind.is_operator():
@@ -167,10 +187,38 @@ class Parser:
         _ = self.advance() # Semicolon, TODO: error handling
         return ASTVariableDeclaration(identifier, expression)
 
+    def function_call(self) -> ASTFunctionCall:
+        function = ASTIdentifier(self.advance().literal)
+        _ = self.advance() # Opening parenthesis
+
+        parameters = []
+        token = self.peek()
+        while token is not None and token.kind != TokenKind.PAREN_CLOSE:
+            # TODO: Error handling, expect commas in between identifiers
+            if token.kind == TokenKind.COMMA:
+                # Consume the comma
+                _ = self.advance()
+            else:
+                parameters.append(self.expression())
+
+            # Grab next token
+            token = self.peek()
+
+        # Function calls may be statements, which end in a semicolon, after the
+        # closing parenthesis -- consume the token
+        if self.peek().kind == TokenKind.SEMICOLON:
+            _ = self.advance()
+
+        return ASTFunctionCall(function, parameters)
+
     def statement(self) -> Optional[ASTStatement]:
         statement = None
 
         if (token := self.peek()) is not None and token.kind == TokenKind.IDENTIFIER:
-            statement = self.declaration()
+            next_token = self.peek(lookahead=1)
+            if next_token.kind == TokenKind.ASSIGNMENT:
+                statement = self.declaration()
+            elif next_token.kind == TokenKind.PAREN_OPEN:
+                statement = self.function_call()
 
         return statement
