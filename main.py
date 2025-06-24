@@ -1,6 +1,8 @@
-from lexer import Lexer
-from parser import Parser
 from argparse import ArgumentParser
+
+from compiler.lexer import Lexer
+from compiler.parser import Parser
+from compiler.ir.builder import IRBuilder
 
 def main() -> None:
     argument_parser = ArgumentParser(
@@ -27,6 +29,10 @@ def main() -> None:
         parser = Parser(tokens)
         ast = parser.parse()
         print(ast.dump_ast())
+
+        ir = IRBuilder()
+        ir.build(ast)
+        print(ir.dump_ir())
 
 if __name__ == "__main__":
     main()
