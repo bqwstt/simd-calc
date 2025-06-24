@@ -9,7 +9,7 @@ from ..ast import *
 class IRLiteralType(Enum):
     INTEGER = 0
     FLOATING = 1
-    STRING = 2
+    PTR = 2
 
 class IRTerm:
     pass
@@ -32,7 +32,7 @@ class IRVariable(IRTerm):
 class IRInstructionKind(Enum):
     ADD = 0
     SUB = 1
-    MULT = 2
+    MUL = 2
     DIV = 3
     EXP = 4
 
@@ -104,19 +104,36 @@ class IRBuilder:
     @build.register
     def _(self, node: ASTIdentifier) -> IRVariable:
         result = self.new_variable()
-        self.emit(IRInstructionKind.LOAD, result, IRLiteral(node.name, IRLiteralType.STRING))
+        self.emit(IRInstructionKind.LOAD, result, IRLiteral(node.name, IRLiteralType.PTR))
         return result
 
     @build.register
     def _(self, node: ASTVariableDeclaration) -> None:
         # Allocate new variable
         result = self.new_variable()
-        # TODO: ALLOC needs the type it has to allocate (e.g., "INTEGER", "STRING")
+        # TODO: ALLOC needs the type it has to allocate (e.g., "INTEGER", "PTR")
         self.emit(IRInstructionKind.ALLOC, result, operands=None)
 
         # Save expression into new variable
         expression = self.build(node.expression)
         self.emit(IRInstructionKind.STORE, result=None, operands=(result, expression))
+
+    @build.register
+    def _(self, node: ASTBinaryExpression) -> IRVariable:
+        left = self.build(node.left)
+        right = self.build(node.left)
+
+        kind_map = {
+            BinaryExpressionKind.PLUS: IRInstructionKind.ADD,
+            BinaryExpressionKind.MINUS: IRInstructionKind.SUB,
+            BinaryExpressionKind.MULTIPLY: IRInstructionKind.MUL,
+            BinaryExpressionKind.DIVIDE: IRInstructionKind.DIV,
+            BinaryExpressionKind.EXPONENT: IRInstructionKind.EXP,
+        }
+
+        result = self.new_variable()
+        self.emit(kind_map[node.operation], result, operands=(left, right))
+        return result
 
     def dump_ir(self) -> str:
         return "\n".join(instr.dump_ir() for instr in self.instructions)
